@@ -224,6 +224,8 @@ def move_to_position_newton(x, y):
     initial_theta2 = 0
 
     theta1, theta2 = inverse_kinematics_newton(x, y, initial_theta1, initial_theta2)
+    print(theta1, theta2, file=sys.stderr)
+
 
     # Convert joint angles to motor commands and execute them
     move_to_angles(theta1, theta2)
