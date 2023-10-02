@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from ev3dev2.motor import LargeMotor, OUTPUT_C, OUTPUT_D, SpeedPercent
 from ev3dev2.sensor.lego import TouchSensor
-import numpy as np
+#import numpy as np
 import math
 import sys
 from time import sleep
@@ -164,44 +164,58 @@ def move_to_position_analytic(x, y):
 
 def jacobian(theta1, theta2):
     # Convert angles from degrees to radians
-    theta1_rad = np.radians(theta1)
-    theta2_rad = np.radians(theta2)
+    theta1_rad = math.radians(theta1)
+    theta2_rad = math.radians(theta2)
 
     # Calculate the elements of the Jacobian matrix
-    J11 = -link1 * np.sin(theta1_rad) - link2 * np.sin(theta1_rad + theta2_rad)
-    J12 = -link2 * np.sin(theta1_rad + theta2_rad)
-    J21 = link1 * np.cos(theta1_rad) + link2 * np.cos(theta1_rad + theta2_rad)
-    J22 = link2 * np.cos(theta1_rad + theta2_rad)
+    J11 = -link1 * math.sin(theta1_rad) - link2 * math.sin(theta1_rad + theta2_rad)
+    J12 = -link2 * math.sin(theta1_rad + theta2_rad)
+    J21 = link1 * math.cos(theta1_rad) + link2 * math.cos(theta1_rad + theta2_rad)
+    J22 = link2 * math.cos(theta1_rad + theta2_rad)
 
-    return np.array([[J11, J12], [J21, J22]])
+    return [[J11, J12], [J21, J22]]
 
 
 def inverse_kinematics_newton(target_x, target_y, initial_theta1, initial_theta2):
     # Set a tolerance level
-    tolerance = 0.01
+    tolerance = 0.0001
 
     # Initialize thetas
     theta1 = initial_theta1
     theta2 = initial_theta2
-
+    print(theta1, theta2, file=sys.stderr)
     while True:
         current_x, current_y = forward_kinematics(theta1, theta2)
-        error = np.array([target_x - current_x, target_y - current_y])
+        error = [target_x - current_x, target_y - current_y]
 
         # If the error is within the tolerance level, break the loop
-        if np.linalg.norm(error) < tolerance:
+        if math.sqrt(error[0] ** 2 + error[1] ** 2) < tolerance:
             break
 
-        # Calculate the Jacobian and its pseudo-inverse
+        # Calculate the Jacobian
         J = jacobian(theta1, theta2)
-        J_inv = np.linalg.pinv(J)
+
+        # Calculate the determinant of the Jacobian
+        detJ = J[0][0] * J[1][1] - J[0][1] * J[1][0]
+
+        # Avoid division by zero
+        if abs(detJ) < 1e-6:
+            print("Singularity reached. Unable to calculate inverse.")
+            break
+
+        # Calculate the pseudo-inverse of the Jacobian
+        J_inv = [[J[1][1] / detJ, -J[0][1] / detJ], [-J[1][0] / detJ, J[0][0] / detJ]]
+
+        # Calculate change in thetas
+        delta_theta = [J_inv[0][0] * error[0] + J_inv[0][1] * error[1], J_inv[1][0] * error[0] + J_inv[1][1] * error[1]]
 
         # Update thetas
-        delta_theta = J_inv @ error
         theta1 += delta_theta[0]
         theta2 += delta_theta[1]
+        print(theta1, theta2, file=sys.stderr)
 
     return theta1, theta2
+
 
 
 def move_to_position_newton(x, y):
@@ -215,7 +229,7 @@ def move_to_position_newton(x, y):
     move_to_angles(theta1, theta2)
 
 
-def broydens_method(target_x, target_y, initial_theta1, initial_theta2):
+'''def broydens_method(target_x, target_y, initial_theta1, initial_theta2):
     # Set a tolerance level
     tolerance = 0.01
 
@@ -260,7 +274,7 @@ def move_to_position_broyden(x, y):
     theta1, theta2 = broydens_method(x, y, initial_theta1, initial_theta2)
 
     # Convert joint angles to motor commands and execute them
-    move_to_angles(theta1, theta2)
+    move_to_angles(theta1, theta2)'''
 
 
 def main():
@@ -284,7 +298,11 @@ def main():
     print("The Euclidean distance error between target and actual positions is: " + str(round(error,2)) + " cm", file=sys.stderr)'''
 
     #measure_distance()
-    measure_angle()
+    #measure_angle()
+    #move_to_position_analytic(22.1, 14.8)
+    move_to_position_newton(22.1,14.8)
+    #x, y = forward_kinematics(motor1.position, motor2.position)
+    #print("The end effector is at position ( " + str(round(x,1)) + ',' + str(round(y,1)) + ")", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
