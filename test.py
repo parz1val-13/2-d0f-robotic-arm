@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from ev3dev2.motor import LargeMotor, OUTPUT_C, OUTPUT_D, SpeedPercent
 from ev3dev2.sensor.lego import TouchSensor
+import numpy as np
 import math
 import sys
 from time import sleep
+
 
 # Define the lengths of your links
 link1 = 16.8  # length of link 1 in cm
@@ -13,6 +15,7 @@ link2 = 10  # length of link 2 in cm
 motor1 = LargeMotor(OUTPUT_C)
 motor2 = LargeMotor(OUTPUT_D)
 touch_sensor = TouchSensor()
+
 
 def forward_kinematics(theta1, theta2):
     """
@@ -33,6 +36,7 @@ def forward_kinematics(theta1, theta2):
 
     return x, y
 
+
 def move_to_angles(theta1, theta2):
     """
     Moves the robot arm to the specified joint angles.
@@ -40,6 +44,7 @@ def move_to_angles(theta1, theta2):
     motor1.on_for_degrees(SpeedPercent(5), theta1)
     sleep(2)
     motor2.on_for_degrees(SpeedPercent(5), theta2)
+
 
 def measure_distance():
     """
@@ -110,6 +115,152 @@ def measure_angle():
     angle_deg = math.degrees(angle_rad)
 
     print('The angle is ' + str(angle_deg) +  ' degrees', file=sys.stderr)
+
+
+def inverse_kinematics_analytic(x, y):
+    """
+    Given an (x, y) position in cm, this function calculates the joint angles required
+    to reach that position.
+    """
+    # Calculate the distance from the origin to the point
+    r = math.sqrt(x**2 + y**2)
+    
+    # Check if the target is reachable, otherwise return current position
+    if r > link1 + link2:
+        print("Target is not reachable")
+        return motor1.position, motor2.position
+
+    # Calculate joint angles using inverse kinematics formulas
+    cos_theta2 = (r**2 - link1**2 - link2**2) / (2 * link1 * link2)
+    
+    # Two possible solutions for theta2 (elbow up and elbow down)
+    theta2_up = math.acos(cos_theta2)
+    theta2_down = -math.acos(cos_theta2)
+
+    # Calculate theta1 for both solutions
+    theta1_up = math.atan2(y, x) - math.atan2(link2 * math.sin(theta2_up), link1 + link2 * math.cos(theta2_up))
+    theta1_down = math.atan2(y, x) - math.atan2(link2 * math.sin(theta2_down), link1 + link2 * math.cos(theta2_down))
+
+    # Convert joint angles from radians to degrees
+    theta1_up = math.degrees(theta1_up)
+    theta2_up = math.degrees(theta2_up)
+    theta1_down = math.degrees(theta1_down)
+    theta2_down = math.degrees(theta2_down)
+
+    # Choose solution based on some criteria (e.g., smallest total joint angle)
+    if abs(theta1_up) + abs(theta2_up) <= abs(theta1_down) + abs(theta2_down):
+        return theta1_up, theta2_up
+    else:
+        return theta1_down, theta2_down
+
+
+def move_to_position_analytic(x, y):
+    """
+    Moves the robot arm to the specified (x, y) position.
+    """
+    theta1, theta2 = inverse_kinematics_analytic(x, y)
+    move_to_angles(theta1, theta2)
+
+
+def jacobian(theta1, theta2):
+    # Convert angles from degrees to radians
+    theta1_rad = np.radians(theta1)
+    theta2_rad = np.radians(theta2)
+
+    # Calculate the elements of the Jacobian matrix
+    J11 = -link1 * np.sin(theta1_rad) - link2 * np.sin(theta1_rad + theta2_rad)
+    J12 = -link2 * np.sin(theta1_rad + theta2_rad)
+    J21 = link1 * np.cos(theta1_rad) + link2 * np.cos(theta1_rad + theta2_rad)
+    J22 = link2 * np.cos(theta1_rad + theta2_rad)
+
+    return np.array([[J11, J12], [J21, J22]])
+
+
+def inverse_kinematics_newton(target_x, target_y, initial_theta1, initial_theta2):
+    # Set a tolerance level
+    tolerance = 0.01
+
+    # Initialize thetas
+    theta1 = initial_theta1
+    theta2 = initial_theta2
+
+    while True:
+        current_x, current_y = forward_kinematics(theta1, theta2)
+        error = np.array([target_x - current_x, target_y - current_y])
+
+        # If the error is within the tolerance level, break the loop
+        if np.linalg.norm(error) < tolerance:
+            break
+
+        # Calculate the Jacobian and its pseudo-inverse
+        J = jacobian(theta1, theta2)
+        J_inv = np.linalg.pinv(J)
+
+        # Update thetas
+        delta_theta = J_inv @ error
+        theta1 += delta_theta[0]
+        theta2 += delta_theta[1]
+
+    return theta1, theta2
+
+
+def move_to_position_newton(x, y):
+    # Use your initial joint angles here
+    initial_theta1 = 0
+    initial_theta2 = 0
+
+    theta1, theta2 = inverse_kinematics_newton(x, y, initial_theta1, initial_theta2)
+
+    # Convert joint angles to motor commands and execute them
+    move_to_angles(theta1, theta2)
+
+
+def broydens_method(target_x, target_y, initial_theta1, initial_theta2):
+    # Set a tolerance level
+    tolerance = 0.01
+
+    # Initialize thetas
+    theta = np.array([initial_theta1, initial_theta2])
+
+    # Initialize Jacobian approximation (identity matrix)
+    J_inv = np.eye(2)
+
+    while True:
+        current_x, current_y = forward_kinematics(theta[0], theta[1])
+        error = np.array([target_x - current_x, target_y - current_y])
+
+        # If the error is within the tolerance level, break the loop
+        if np.linalg.norm(error) < tolerance:
+            break
+
+        # Calculate change in thetas
+        delta_theta = J_inv @ error
+
+        # Update thetas
+        theta_new = theta + delta_theta
+
+        # Calculate change in end effector position
+        delta_x, delta_y = forward_kinematics(theta_new[0], theta_new[1]) - forward_kinematics(theta[0], theta[1])
+        delta_f = np.array([delta_x, delta_y])
+
+        # Update Jacobian approximation
+        y = delta_f - J_inv @ error
+        J_inv += np.outer(delta_theta - J_inv @ y, delta_theta) / (delta_theta @ y)
+
+        theta = theta_new
+
+    return theta[0], theta[1]
+
+
+def move_to_position_broyden(x, y):
+    # Use your initial joint angles here
+    initial_theta1 = 0
+    initial_theta2 = 0
+
+    theta1, theta2 = broydens_method(x, y, initial_theta1, initial_theta2)
+
+    # Convert joint angles to motor commands and execute them
+    move_to_angles(theta1, theta2)
 
 
 def main():
