@@ -306,6 +306,8 @@ def measure_midpoint():
     mid_y = (y1 + y2) / 2
     print('Midpoint calculated: (' + str(mid_x) + ',' + str(mid_y) + ') centimeters', file=sys.stderr)
 
+    # Move to origin
+    sleep(8)
     # Move to the calculated midpoint
     move_to_position_newton(mid_x, mid_y)
 
@@ -333,9 +335,10 @@ def main():
     #measure_distance()
     #measure_angle()
     #move_to_position_analytic(22.1, 14.8)
-    move_to_position_newton(8, 18)
-    #x, y = forward_kinematics(motor1.position, motor2.position)
-    #print("The end effector is at position ( " + str(round(x,1)) + ',' + str(round(y,1)) + ")", file=sys.stderr)
+    #move_to_position_newton(8, 18)
+    measure_midpoint()
+    x, y = forward_kinematics(motor1.position, motor2.position)
+    print("The end effector is at position ( " + str(round(x,1)) + ',' + str(round(y,1)) + ")", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
