@@ -183,21 +183,21 @@ def inverse_kinematics_newton(target_x, target_y, initial_theta1, initial_theta2
     # Initialize thetas
     theta1 = initial_theta1
     theta2 = initial_theta2
-    print(theta1, theta2, file=sys.stderr)
+    #print(theta1, theta2, file=sys.stderr)
     while True:
         current_x, current_y = forward_kinematics(theta1, theta2)
         error = [target_x - current_x, target_y - current_y]
-
+        #print(error, file=sys.stderr)
         # If the error is within the tolerance level, break the loop
         if math.sqrt(error[0] ** 2 + error[1] ** 2) < tolerance:
             break
 
         # Calculate the Jacobian
         J = jacobian(theta1, theta2)
-
+        #print(J, file=sys.stderr)
         # Calculate the determinant of the Jacobian
         detJ = J[0][0] * J[1][1] - J[0][1] * J[1][0]
-
+        #print(detJ, file=sys.stderr)
         # Avoid division by zero
         if abs(detJ) < 1e-6:
             print("Singularity reached. Unable to calculate inverse.")
@@ -208,11 +208,11 @@ def inverse_kinematics_newton(target_x, target_y, initial_theta1, initial_theta2
 
         # Calculate change in thetas
         delta_theta = [J_inv[0][0] * error[0] + J_inv[0][1] * error[1], J_inv[1][0] * error[0] + J_inv[1][1] * error[1]]
-
+        #print(delta_theta, file=sys.stderr)
         # Update thetas
         theta1 += delta_theta[0]
         theta2 += delta_theta[1]
-        print(theta1, theta2, file=sys.stderr)
+        #print(theta1, theta2, file=sys.stderr)
 
     return theta1, theta2
 
@@ -220,11 +220,11 @@ def inverse_kinematics_newton(target_x, target_y, initial_theta1, initial_theta2
 
 def move_to_position_newton(x, y):
     # Use your initial joint angles here
-    initial_theta1 = 0
-    initial_theta2 = 0
+    initial_theta1 = 1
+    initial_theta2 = 1
 
     theta1, theta2 = inverse_kinematics_newton(x, y, initial_theta1, initial_theta2)
-    print(theta1, theta2, file=sys.stderr)
+    #print(theta1, theta2, file=sys.stderr)
 
 
     # Convert joint angles to motor commands and execute them
@@ -279,6 +279,37 @@ def move_to_position_broyden(x, y):
     move_to_angles(theta1, theta2)'''
 
 
+def measure_midpoint():
+    """
+    Measures the midpoint between two points in the robot's workspace.
+    """
+    print('Move to first point and press touch sensor', file=sys.stderr)
+    while not touch_sensor.is_pressed:
+        pass  # wait for touch sensor press
+
+    # Record first point
+    x1, y1 = forward_kinematics(motor1.position, motor2.position)
+    print('First point recorded: (' + str(x1) + ',' + str(y1) + ') centimeters', file=sys.stderr)
+
+    # Record second point
+    print('Move to second point and press touch sensor', file=sys.stderr)
+    sleep(5)
+    while not touch_sensor.is_pressed:
+        pass  # wait for touch sensor press
+
+    # Record second point
+    x2, y2 = forward_kinematics(motor1.position, motor2.position)
+    print('Second point recorded: (' + str(x2) + ',' + str(y2) + ') centimeters', file=sys.stderr)
+
+    # Calculate the midpoint between the points
+    mid_x = (x1 + x2) / 2
+    mid_y = (y1 + y2) / 2
+    print('Midpoint calculated: (' + str(mid_x) + ',' + str(mid_y) + ') centimeters', file=sys.stderr)
+
+    # Move to the calculated midpoint
+    move_to_position_newton(mid_x, mid_y)
+
+
 def main():
     # Test forward kinematics function
     theta1 = 45  # angle of joint 1 in degrees
@@ -302,7 +333,7 @@ def main():
     #measure_distance()
     #measure_angle()
     #move_to_position_analytic(22.1, 14.8)
-    move_to_position_newton(22.1,14.8)
+    move_to_position_newton(8, 18)
     #x, y = forward_kinematics(motor1.position, motor2.position)
     #print("The end effector is at position ( " + str(round(x,1)) + ',' + str(round(y,1)) + ")", file=sys.stderr)
 
